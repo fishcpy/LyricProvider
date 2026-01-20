@@ -1,5 +1,5 @@
 <!--
-  ~ Copyright 2026 Proify
+  ~ Copyright 2026 Proify, Tomakino
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
   -->
 
 <resources>
-    <string name="app_name">Apple Music 歌词提供</string>
+    <string name="app_name">Apple Music 歌词支持</string>
     <string name="xposed_description">为词幕提供 Apple Music 歌词</string>
     <string name="lyricon_module_description">提供 Apple Music 歌词</string>
 </resources>

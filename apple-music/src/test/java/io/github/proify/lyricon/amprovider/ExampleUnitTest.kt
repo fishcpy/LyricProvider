@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Proify
+ * Copyright 2026 Proify, Tomakino
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package io.github.proify.lyricon.amprovider
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -28,6 +30,27 @@ class ExampleUnitTest {
     @Test
     fun addition_isCorrect() {
         assertEquals(4, 2 + 2)
+        val json = Json {
+            ignoreUnknownKeys = true
+            coerceInputValues = true
+            encodeDefaults = true
+            isLenient = true
+        }
+
+        val v1 = json.decodeFromString<V1>(jsondata)
+        assertEquals(1, v1.a)
+        assertEquals(true, v1.b)
+
     }
+
+    private val jsondata = """
+        {
+            "a": 1,
+            "b": true
+        }
+    """.trimIndent()
+
+    @Serializable
+    data class V1(val a: Int, val b: Boolean)
 
 }

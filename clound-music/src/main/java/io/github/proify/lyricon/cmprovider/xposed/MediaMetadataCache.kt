@@ -1,0 +1,99 @@
+/*
+ * Copyright 2026 Proify, Tomakino
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.github.proify.lyricon.cmprovider.xposed
+
+import com.highcapable.kavaref.extension.makeAccessible
+import kotlinx.serialization.Serializable
+import java.lang.reflect.Method
+
+/**
+ * 媒体元数据反射缓存工具。
+ * * 负责通过反射从网易云音乐内部对象中提取歌曲信息。
+ */
+object MediaMetadataCache {
+    // 使用 LRU 策略缓存最近的歌曲信息
+    private val metadataCache = object : LinkedHashMap<String, Metadata>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Metadata>?): Boolean =
+            size > 50
+    }
+
+    private var getIdMethod: Method? = null
+    private var getMusicNameMethod: Method? = null
+    private var getArtistsNameMethod: Method? = null
+    private var getDurationMethod: Method? = null
+
+    /**
+     * 安全反射调用辅助方法。
+     */
+    private fun Method?.invokeSafe(any: Any): Any? {
+        return try {
+            this?.invoke(any)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 解析元数据对象并存入缓存。
+     * * @param bizMusicMeta 网易云音乐内部 BizMusicMeta 对象实例。
+     */
+    fun putAndGet(bizMusicMeta: Any): Metadata? {
+        val javaClass = bizMusicMeta.javaClass
+
+        // 懒加载反射方法，提升后续调用性能
+        if (getIdMethod == null) {
+            runCatching {
+                getIdMethod = javaClass.getDeclaredMethod("getId").apply { makeAccessible() }
+                getMusicNameMethod =
+                    javaClass.getDeclaredMethod("getMusicName").apply { makeAccessible() }
+                getArtistsNameMethod =
+                    javaClass.getDeclaredMethod("getArtistsName").apply { makeAccessible() }
+                getDurationMethod =
+                    javaClass.getDeclaredMethod("getDuration").apply { makeAccessible() }
+            }
+        }
+
+        val id = getIdMethod.invokeSafe(bizMusicMeta) as? Long ?: return null
+        val musicName = getMusicNameMethod.invokeSafe(bizMusicMeta) as? String
+        val artistsName = getArtistsNameMethod.invokeSafe(bizMusicMeta) as? String
+        val duration = getDurationMethod.invokeSafe(bizMusicMeta) as? Long ?: 0L
+
+        val strId = id.toString()
+        val newMetadata = Metadata(
+            id = strId,
+            title = musicName,
+            artist = artistsName,
+            duration = duration
+        )
+
+        synchronized(metadataCache) {
+            metadataCache[strId] = newMetadata
+        }
+        return newMetadata
+    }
+
+    fun getMetadataById(mediaId: String): Metadata? =
+        synchronized(metadataCache) { metadataCache[mediaId] }
+
+    @Serializable
+    data class Metadata(
+        val id: String,
+        val title: String?,
+        val artist: String?,
+        val duration: Long
+    )
+}

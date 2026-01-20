@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-  ~ Copyright 2026 Proify
+  ~ Copyright 2026 Proify, Tomakino
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@
 
         <meta-data
             android:name="lyricon_module_author"
-            android:value="Proify" />
+            android:value="Tomakino" />
 
         <meta-data
             android:name="lyricon_module_description"
@@ -41,6 +41,10 @@
         <meta-data
             android:name="xposeddescription"
             android:value="@string/xposed_description" />
+
+        <meta-data
+            android:name="lyricon_module_tags"
+            android:resource="@array/lyricon_module_tags" />
 
         <meta-data
             android:name="xposedscope"

@@ -2,7 +2,10 @@
   <dictionary name="project">
     <words>
       <w>amprovider</w>
+      <w>cloudmusic</w>
+      <w>cmprovider</w>
       <w>lyriconmodule</w>
+      <w>netease</w>
     </words>
   </dictionary>
 </component>

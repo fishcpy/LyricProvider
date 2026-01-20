@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Proify
+ * Copyright 2026 Proify, Tomakino
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,14 @@ object ObjectUtils {
      * @param obj 要打印的对象
      * @param tag 自定义 Log 标签，如果为 null 则使用默认 TAG
      * @param logLevel Log 级别，默认为 Log.DEBUG
+     * @param prefix 只打印指定前缀的方法
      */
-    fun print(obj: Any, tag: String? = null, logLevel: Int = Log.DEBUG) {
+    fun print(
+        obj: Any,
+        tag: String? = null,
+        logLevel: Int = Log.DEBUG,
+        prefix: Array<String>? = null
+    ) {
         val logTag = tag ?: TAG
         val className = obj.javaClass.simpleName
 
@@ -69,6 +75,7 @@ object ObjectUtils {
                 logMessage(logTag, logLevel, "║ No-argument Methods (${noArgMethods.size}):")
                 for (method in noArgMethods) {
                     if (method.name.startsWith("access$")) continue // 跳过编译器生成的方法
+                    if (prefix != null && !prefix.any { method.name.startsWith(it) }) continue
 
                     method.isAccessible = true
                     try {

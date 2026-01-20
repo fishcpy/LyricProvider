@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Proify
+ * Copyright 2026 Proify, Tomakino
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,16 @@ import com.android.build.api.dsl.ApplicationExtension
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    kotlin("plugin.serialization") version "2.1.21"
 }
 
 configure<ApplicationExtension> {
     namespace = "io.github.proify.lyricon.cmprovider"
     compileSdk {
-        version = release(36)
+        version = release(36) {
+            minorApiLevel = 1
+        }
     }
 
     defaultConfig {
@@ -47,28 +50,28 @@ configure<ApplicationExtension> {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
-        compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
+    implementation(project(":common"))
+    implementation(libs.lyricon.provider)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.dexkit)
+
+    implementation(libs.yukihookapi.api)
+    implementation(libs.kavaref.core)
+    implementation(libs.kavaref.extension)
+    compileOnly(libs.xposed.api)
+    ksp(libs.yukihookapi.ksp.xposed)
+
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.activity.compose)
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.tooling)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Proify
+ * Copyright 2026 Proify, Tomakino
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,52 +21,42 @@ import java.util.zip.Deflater
 import java.util.zip.Inflater
 
 /**
- * 使用 ZLIB 算法压缩ByteArray。
- *
- * @return 压缩后的字节数组。
+ * ZLIB压缩字节数组
  */
 fun ByteArray.deflate(): ByteArray {
     if (isEmpty()) return byteArrayOf()
-    val deflater = Deflater()
-    return try {
-        deflater.setInput(this)
-        deflater.finish()
+
+    return Deflater().run {
+        setInput(this@deflate)
+        finish()
 
         ByteArrayOutputStream().use { output ->
             val buffer = ByteArray(4096)
-            while (!deflater.finished()) {
-                val count = deflater.deflate(buffer)
-                output.write(buffer, 0, count)
+            while (!finished()) {
+                output.write(buffer, 0, deflate(buffer))
             }
             output.toByteArray()
-        }
-    } finally {
-        deflater.end()
+        }.also { end() }
     }
 }
 
 /**
- * 使用 ZLIB 算法解压缩字节数组。
- *
- * @return 解压后的ByteArray。
- * @throws java.util.zip.DataFormatException 如果数据格式非法。
+ * ZLIB解压字节数组
  */
 fun ByteArray.inflate(): ByteArray {
     if (isEmpty()) return byteArrayOf()
-    val inflater = Inflater()
-    return try {
-        inflater.setInput(this)
+
+    return Inflater().run {
+        setInput(this@inflate)
 
         ByteArrayOutputStream().use { output ->
             val buffer = ByteArray(4096)
-            while (!inflater.finished()) {
-                val count = inflater.inflate(buffer)
-                if (count == 0 && inflater.needsInput()) break
+            while (!finished()) {
+                val count = inflate(buffer)
+                if (count == 0 && needsInput()) break
                 output.write(buffer, 0, count)
             }
             output.toByteArray()
-        }
-    } finally {
-        inflater.end()
+        }.also { end() }
     }
 }

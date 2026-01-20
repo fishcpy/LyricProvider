@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Proify
+ * Copyright 2026 Proify, Tomakino
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,21 +57,17 @@ configure<ApplicationExtension> {
 }
 
 dependencies {
-    implementation(fileTree("libs") { include("*.jar") })
-    implementation(libs.provider)
-
     implementation(project(":common"))
+    implementation(libs.lyricon.provider)
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.yukihookapi.api)
     implementation(libs.kavaref.core)
     implementation(libs.kavaref.extension)
-
     compileOnly(libs.xposed.api)
     ksp(libs.yukihookapi.ksp.xposed)
 
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
