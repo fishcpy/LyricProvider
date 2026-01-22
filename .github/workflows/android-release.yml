@@ -1,4 +1,4 @@
-name: Multi-App Release
+name: Android Multi-App Release
 
 on:
   push:
@@ -6,42 +6,66 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  build-and-release:
+    name: Build and Release Apps
     runs-on: ubuntu-latest
+
     steps:
+      # 1. 检出代码
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整提交历史，便于生成 Release Note
 
+      # 2. 设置 JDK 环境
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      # 3. 设置 Gradle 并开启构建缓存
+      # 此 Action 会自动处理依赖缓存和构建产物缓存
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: wrapper
+          # 自动保存/恢复构建缓存
+          cache-read-only: false
 
+      # 4. 从 GitHub Secrets 中还原签名文件
       - name: Decode Keystore
-        # 解码一次，放置在根目录或指定位置
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > release.jks
 
+      # 5. 执行打包命令
+      # --build-cache 显式利用 Gradle 构建缓存加速
+      # --stacktrace 方便在报错时查看详细日志
       - name: Build All Release APKs
-        # 运行根目录脚本将编译所有包含的 app 模块
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --build-cache --stacktrace
         env:
-          RELEASE_STORE_FILE: ../../release.jks # 注意路径，相对于模块目录
+          # 传递给 build.gradle 使用的环境变量
+          RELEASE_STORE_FILE: ../release.jks
           RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      # 6. 发布到 GitHub Release
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # 使用通配符匹配所有模块下生成的 APK
+          # 自动收集所有 App 模块下的 Release APK
           files: |
             **/build/outputs/apk/release/*.apk
-            **/build/outputs/bundle/release/*.aab
+          # 自动根据 commit 差异生成 Release 日志
           generate_release_notes: true
+          # 标记是否为草稿或预发布
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 7. (可选) 清理敏感文件
+      - name: Cleanup Keystore
+        if: always()
+        run: rm -f release.jks
