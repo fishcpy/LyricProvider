@@ -8,7 +8,6 @@ package io.github.proify.lyricon.amprovider.xposed
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.SharedPreferences
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedHelpers
 
@@ -16,13 +15,11 @@ import de.robv.android.xposed.XposedHelpers
 object PreferencesMonitor {
 
     private lateinit var context: Context
-    private lateinit var prefs: SharedPreferences
     var listener: Listener? = null
 
     fun initialize(context: Context) {
         if (::context.isInitialized) return
         this.context = context.applicationContext
-        prefs = context.getSharedPreferences("preferences", Context.MODE_PRIVATE)
 
         XposedHelpers.findAndHookMethod(
             "com.apple.android.music.utils.AppSharedPreferences",
@@ -38,7 +35,8 @@ object PreferencesMonitor {
     }
 
     fun isTranslationSelected(): Boolean =
-        prefs.getBoolean("key_player_lyrics_translation_selected", false)
+        context.getSharedPreferences("preferences", Context.MODE_PRIVATE)
+            .getBoolean("key_player_lyrics_translation_selected", false)
 
     interface Listener {
         fun onTranslationSelectedChanged(selected: Boolean)

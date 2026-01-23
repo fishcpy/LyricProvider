@@ -67,8 +67,8 @@ object Apple : YukiBaseHooker() {
         }
 
         DiskSongManager.initialize(application)
-        initProvider()
         initScreenStateMonitor()
+        initProvider()
 
         startHooks()
     }
