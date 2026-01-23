@@ -1,6 +1,6 @@
 # LyricProvider - 歌词提供器
 
-![release](https://img.shields.io/github/v/release/proify/lyricon?style=flat-square&link=https://github.com/proify/LyricProvider/releases)
+![release](https://img.shields.io/github/v/release/proify/lyricon?style=flat-square)
 ![downloads](https://img.shields.io/github/downloads/proify/lyricon/total?style=flat-square)
 ![Workflow Status](https://img.shields.io/github/actions/workflow/status/proify/lyricon/build.yml?style=flat-square)
 
@@ -22,6 +22,10 @@
 1. 下载对应的插件
 2. 安装之后在 `Lsposed` 中启用插件
 3. 重启对应的应用
+
+### 联系
+
+- [QQ群](https://qm.qq.com/q/IXif8Zi0Iq)
 
 ## 🐛 问题反馈
 
