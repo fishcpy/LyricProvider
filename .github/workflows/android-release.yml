@@ -1,16 +1,13 @@
 name: Android Multi-App Build & Release
 
 on:
-  # 自动：推送 v* 标签时，构建并发布 Release
   push:
     tags:
       - 'v*'
-
-  # 手动：在 GitHub Actions 页面点击 "Run workflow" 触发
   workflow_dispatch:
     inputs:
       build-type:
-        description: 'Build Type (Debug also signed with your keystore)'
+        description: 'Build Type'
         type: choice
         options:
           - debug
@@ -24,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      BUILD_TYPE: $ {{ github.event.inputs.build-type || 'release' }}
+      BUILD_TYPE: ${{ github.event.inputs.build-type || 'release' }}
 
     steps:
       - name: Checkout Code
@@ -44,41 +41,33 @@ jobs:
           gradle-version: wrapper
           cache-read-only: false
 
-      # 🔑 关键修复：安全解码 keystore（避免 base64 invalid input）
-      - name: Decode Keystore from Secret
+      # 解码 keystore 到项目根目录
+      - name: Decode Keystore
         run: |
-          printf '%s' ' ${{ secrets.SIGNING_KEY }}' | base64 -d > release.jks
-          if [ ! -s release.jks ]; then
-            echo "❌ Failed to decode keystore. Check SIGNING_KEY secret format."
-            exit 1
-          fi
-          echo "✅ Keystore decoded successfully ( $ (wc -c < release.jks) bytes)"
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > release.jks
 
-      # 🛠️ 构建 APK（Debug 和 Release 都使用你的签名）
+      # 构建：传入签名环境变量（注意路径是 ../release.jks，因为 Gradle 在子模块执行）
       - name: Build APKs
         run: |
-          if [ " $ BUILD_TYPE" = "release" ]; then
+          if [ "$BUILD_TYPE" = "release" ]; then
             ./gradlew assembleRelease
           else
             ./gradlew assembleDebug
           fi
         env:
-          # 这些变量供 build.gradle.kts 使用
-          RELEASE_STORE_FILE: ../release.jks
-          RELEASE_STORE_PASSWORD: $ {{ secrets.KEY_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: $ {{ secrets.ALIAS }}
-          RELEASE_KEY_PASSWORD: $ {{ secrets.KEY_PASSWORD }}
+          RELEASE_STORE_FILE: ../release.jks   # 👈 关键：相对于 app/ 模块的路径
+          RELEASE_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # 📦 上传产物到 Artifacts（便于下载测试）
       - name: Upload APKs to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: $ {{ env.BUILD_TYPE }}-apks
+          name: ${{ env.BUILD_TYPE }}-apks
           path: |
-            **/build/outputs/apk/ $ {{ env.BUILD_TYPE }}/*.apk
+            **/build/outputs/apk/${{ env.BUILD_TYPE }}/*.apk
           if-no-files-found: error
 
-      # 🚀 仅当是 tag 推送且构建类型为 release 时，才创建 GitHub Release
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') && env.BUILD_TYPE == 'release'
         uses: softprops/action-gh-release@v2
@@ -89,9 +78,8 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: $ {{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 🧹 清理敏感文件（即使失败也执行）
       - name: Cleanup Keystore
         if: always()
-        run: rm -f release.jks
+        run: rm -f release.jks || true
