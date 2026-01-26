@@ -27,18 +27,28 @@ object DiskSongManager {
         baseDir?.mkdirs()
     }
 
-    fun save(song: AppleSong): Boolean {
-        val id = song.adamId
+    fun save(appleSong: AppleSong): Boolean {
+        val id = appleSong.adamId
         if (id.isNullOrBlank()) return false
-        val string = json.encodeToString(song)
+        val string = json.encodeToString(appleSong)
         return runCatching {
-            getFile(id)
-                .also { it.parentFile?.mkdirs() }
+            val file = getFile(id)
+
+            file.also { it.parentFile?.mkdirs() }
                 .writeBytes(
                     string
                         .toByteArray(Charsets.UTF_8)
                         .deflate()
                 )
+
+//            val songFile = File(file.parentFile, file.nameWithoutExtension + ".song.json.gz")
+//            if (songFile.exists()) songFile.delete()
+//            songFile.writeBytes(
+//                json.encodeToString(appleSong.toSong())
+//                    .toByteArray(Charsets.UTF_8)
+//                    .deflate()
+//            )
+
         }.isSuccess
     }
 
