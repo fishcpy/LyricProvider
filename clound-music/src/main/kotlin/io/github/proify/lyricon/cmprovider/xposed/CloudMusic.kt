@@ -63,7 +63,32 @@ object CloudMusic : YukiBaseHooker(), LyricFileObserver.FileObserverCallback {
     }
 
     override fun onHook() {
-        if (processName != "com.netease.cloudmusic:play") return
+        when (processName) {
+            "com.netease.cloudmusic:play" -> playProgressHooker.onHook()
+        }
+    }
+
+    private class PlayProgressHooker : LyricFileObserver.FileObserverCallback {
+        private var provider: LyriconProvider? = null
+        private var lastSong: Song? = null
+        private val hotHooker = HotHooker()
+
+        @Volatile
+        private var currentMusicId: String? = null
+        private var lyricFileObserver: LyricFileObserver? = null
+
+        private val mainScope by lazy { CoroutineScope(Dispatchers.Main + SupervisorJob()) }
+
+        private var progressJob: Job? = null
+        private var loadingJob: Job? = null
+
+        private var isPlaying = false
+
+        private var dexKitBridge: DexKitBridge? = null
+        private var preferencesMonitor: PreferencesMonitor? = null
+
+        fun onHook() {
+            if (processName != "com.netease.cloudmusic:play") return
 
         YLog.debug("Hooking, processName= $processName")
 
