@@ -6,7 +6,7 @@
 package io.github.proify.lyricon.cmprovider.xposed
 
 import android.app.Application
-import android.util.Log
+import android.media.session.PlaybackState
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.core.YukiMemberHookCreator
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
@@ -32,7 +32,7 @@ import java.io.File
 import java.lang.reflect.Method
 
 object CloudMusic : YukiBaseHooker() {
-    private const val TAG: String = "CloudMusic"
+    private const val TAG: String = "CloudMusicProvider"
     private val playProgressHooker by lazy { PlayProgressHooker() }
 
     init {
@@ -41,7 +41,11 @@ object CloudMusic : YukiBaseHooker() {
 
     override fun onHook() {
         when (processName) {
-            "com.netease.cloudmusic" -> playProgressHooker.onHook()
+            "com.netease.cloudmusic",
+            "com.netease.cloudmusic:play" -> {
+                YLog.debug(tag = TAG, msg = "Hooking $processName")
+                playProgressHooker.onHook()
+            }
         }
     }
 
@@ -118,7 +122,7 @@ object CloudMusic : YukiBaseHooker() {
             }
             newProvider.register()
             this.provider = newProvider
-            Log.d(TAG, "Provider registered")
+            YLog.info(tag = TAG, msg = "Provider registered")
         }
 
         /**
@@ -126,6 +130,7 @@ object CloudMusic : YukiBaseHooker() {
          */
         override fun onFileChanged(event: Int, file: File) {
             val currentId = currentMusicId ?: return
+            YLog.debug(tag = TAG, msg = "File changed: $file")
             if (file.name != currentId) return
 
             val metadata = MediaMetadataCache.getMetadataById(currentId) ?: return
@@ -199,6 +204,7 @@ object CloudMusic : YukiBaseHooker() {
         }
 
         private fun stopSyncAction() {
+            if (!isPlaying) return
             isPlaying = false
             provider?.player?.setPlaybackState(false)
             pauseCoroutineTask()
@@ -250,6 +256,7 @@ object CloudMusic : YukiBaseHooker() {
                     .hook {
                         after {
                             val bizMusicMeta = args[0] ?: return@after
+                            YLog.debug(tag = TAG, msg = "Metadata changed: $bizMusicMeta")
                             val metadata = MediaMetadataCache.put(bizMusicMeta) ?: return@after
                             onSongChanged(metadata)
                         }
@@ -263,9 +270,11 @@ object CloudMusic : YukiBaseHooker() {
                     .hook {
                         after {
                             val status = args[0] as? Int ?: return@after
+                            YLog.debug(tag = TAG, msg = "Playback status changed: $status")
                             when (status) {
-                                3 -> startSyncAction()
-                                2 -> stopSyncAction()
+                                PlaybackState.STATE_PLAYING -> startSyncAction()
+                                PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED -> stopSyncAction()
+                                else -> Unit
                             }
                         }
                     }

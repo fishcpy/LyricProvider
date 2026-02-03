@@ -93,7 +93,7 @@ object KuGou : YukiBaseHooker() {
             PlaybackState.STATE_PLAYING -> applyPlaybackUpdate(true)
             PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED -> mainHandler.postDelayed(
                 pauseRunnable,
-                150
+                100
             )
         }
     }

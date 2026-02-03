@@ -7,6 +7,7 @@
 package io.github.proify.lyricon.cmprovider.xposed
 
 import com.highcapable.kavaref.extension.makeAccessible
+import com.highcapable.yukihookapi.hook.log.YLog
 import kotlinx.serialization.Serializable
 import java.lang.reflect.Method
 
@@ -24,7 +25,8 @@ object MediaMetadataCache {
     private fun Method?.invokeSafe(any: Any): Any? {
         return try {
             this?.invoke(any)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            YLog.error("MediaMetadataCache invokeSafe error", e)
             null
         }
     }

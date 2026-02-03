@@ -15,8 +15,13 @@ class LyricFileObserver(context: Context, callback: FileObserverCallback) {
 
     private val watchDirs by lazy {
         listOfNotNull(
+            //一些版本的歌词路径
+            context.getExternalFilesDir("Cache/Lyric"),
             context.externalCacheDir?.let { File(it, "Cache/Lyric") },
-            context.getExternalFilesDir("LrcDownload")
+
+            //离线音乐歌词
+            context.getExternalFilesDir("LrcDownload"),
+            context.getExternalFilesDir("Download/Lyric")
         )
     }
 
