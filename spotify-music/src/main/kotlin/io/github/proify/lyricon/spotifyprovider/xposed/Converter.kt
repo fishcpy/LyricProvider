@@ -30,6 +30,9 @@ fun LyricsData.toLyrics(): List<RichLyricLine> {
             line.copy(endTimeMs = nextLine?.startTimeMs ?: (line.startTimeMs + 5000))
         } else line
     }.forEach { line ->
+        if (line.words.isNullOrBlank()) {
+            return@forEach
+        }
         lyrics += RichLyricLine(
             begin = line.startTimeMs,
             end = line.endTimeMs,
