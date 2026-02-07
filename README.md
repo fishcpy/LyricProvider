@@ -1,24 +1,18 @@
 # LyricProvider - 歌词提供器
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-Android-brightgreen?style=flat-square&logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/github/v/release/proify/LyricProvider?style=flat-square&color=blue" alt="release">
-  <img src="https://img.shields.io/github/downloads/proify/LyricProvider/total?style=flat-square&color=orange" alt="downloads">
-  <img src="https://img.shields.io/github/license/proify/LyricProvider?style=flat-square" alt="license">
-  <img src="https://img.shields.io/github/last-commit/proify/lyricon?style=flat-square" alt="Last Commit">
-</p>
+![Android](https://img.shields.io/badge/Platform-Android-brightgreen?style=flat-square&logo=android&logoColor=white)
+![release](https://img.shields.io/github/v/release/proify/LyricProvider?style=flat-square&color=blue)
+![downloads](https://img.shields.io/github/downloads/proify/LyricProvider/total?style=flat-square&color=orange)
+![license](https://img.shields.io/github/license/proify/LyricProvider?style=flat-square)
+![Last Commit](https://img.shields.io/github/last-commit/proify/lyricon?style=flat-square)
 
-<p align="center">
-  <strong>为 <a href="https://github.com/proify/lyricon">词幕 (Lyricon)</a> 打造的跨平台歌词数据聚合提供者</strong>
-</p>
+**适用于 [词幕](https://github.com/proify/lyricon) 的歌词提供者**
 
 ---
 
 ## 🎵 支持平台
 
-本插件采用 LSPosed 注入方式，目前已完美适配以下主流音乐客户端：
-
-### 核心适配列表
+使用 Xposed hook 方式适配，目前已适配以下音乐客户端：
 
 | 平台名称            | 标识符 (ID)            | 适配功能说明               |
 |:----------------|:--------------------|:---------------------|
