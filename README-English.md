@@ -1,4 +1,4 @@
-# LyricProvider - Lyric Extensions for Lyricon
+# Lyric Extensions for Lyricon
 
 ![Platform](https://img.shields.io/badge/Platform-Android-brightgreen?style=flat&logo=android)
 ![Release](https://img.shields.io/github/v/release/proify/LyricProvider?style=flat&color=blue&logo=github)
