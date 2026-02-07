@@ -10,6 +10,7 @@
 /.idea/assetWizardSettings.xml
 /.kotlin/sessions
 /.kotlin/errors
+/.idea/pandoc.xml
 
 .DS_Store
 /build
