@@ -11,6 +11,7 @@
 <p align="left">
   <a href="README-English.md"><img src="https://img.shields.io/badge/Document-English-red.svg" alt="EN"></a>
 </p>
+
 ## 🎵 支持平台
 
 使用 Xposed Hook 方式实现
