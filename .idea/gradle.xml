@@ -15,6 +15,7 @@
             <option value="$PROJECT_DIR$/kugou-music" />
             <option value="$PROJECT_DIR$/kuwo-music" />
             <option value="$PROJECT_DIR$/lx-music" />
+            <option value="$PROJECT_DIR$/meizhu-provider" />
             <option value="$PROJECT_DIR$/poweramp-music" />
             <option value="$PROJECT_DIR$/qq-music" />
             <option value="$PROJECT_DIR$/salt-player-music" />
@@ -22,6 +23,7 @@
             <option value="$PROJECT_DIR$/share/cloudlyric" />
             <option value="$PROJECT_DIR$/share/common" />
             <option value="$PROJECT_DIR$/share/lrckit" />
+            <option value="$PROJECT_DIR$/share/meizhu-provider" />
             <option value="$PROJECT_DIR$/share/qrckit" />
             <option value="$PROJECT_DIR$/share/yrckit" />
             <option value="$PROJECT_DIR$/spotify-music" />

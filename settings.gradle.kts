@@ -37,6 +37,11 @@ include(":share:qrckit")
 include(":share:lrckit")
 include(":share:yrckit")
 include(":share:cloudlyric")
+include(":share:meizhu-provider")
+
+//apps
+include(":cloud-provider")
+include(":meizhu-provider")
 
 include(":apple-music")
 include(":163-music")
@@ -49,6 +54,5 @@ include(":kuwo-music")
 include(":spotify-music")
 
 include(":lx-music")
-include(":cloud-provider")
 include(":poweramp-music")
 include(":salt-player-music")

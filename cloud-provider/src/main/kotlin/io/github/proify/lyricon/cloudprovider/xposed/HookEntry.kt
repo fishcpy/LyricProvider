@@ -16,7 +16,7 @@ open class HookEntry : IYukiHookXposedInit {
     override fun onHook() {
 
         YukiHookAPI.encase {
-            loadApp(isExcludeSelf = false, CloudProvider)
+            loadApp(isExcludeSelf = true, CloudProvider)
         }
     }
 

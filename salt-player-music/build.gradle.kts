@@ -39,7 +39,7 @@ configure<ApplicationExtension> {
 
     buildTypes {
         getByName("debug") {
-            // Debug build doesn't need signing
+            signingConfig = signingConfigs.getByName("release")
         }
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
@@ -64,6 +64,8 @@ configure<ApplicationExtension> {
 
 dependencies {
     implementation(project(":share:common"))
+    implementation(project(":share:meizhu-provider"))
+
     implementation(libs.lyricon.provider)
     implementation(libs.kotlinx.serialization.json)
 
