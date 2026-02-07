@@ -9,15 +9,15 @@
 
 ## 🎵 支持平台
 
-使用 Xposed Hook 方式实现，建议配合 **LSPosed** 使用。
+使用 Xposed Hook 方式实现
 
 ### 核心适配列表
 
 | 平台名称               | 标识符                 | 功能说明                 |
 |:-------------------|:--------------------|:---------------------|
-| 🍎 **Apple Music** | `apple-music`       | 完美支持动态歌词、翻译歌词        |
-| ☁️ **网易云音乐**       | `163-music`         | 完美支持动态歌词、翻译歌词        |
-| 🐧 **QQ 音乐**       | `qq-music`          | 完美支持动态歌词、翻译歌词        |
+| 🍎 **Apple Music** | `apple-music`       | 支持动态歌词、翻译歌词          |
+| ☁️ **网易云音乐**       | `163-music`         | 支持动态歌词、翻译歌词          |
+| 🐧 **QQ 音乐**       | `qq-music`          | 支持动态歌词、翻译歌词          |
 | 🧊 **LX 音乐**       | `lx-music`          | 支持翻译歌词显示             |
 | 🐶 **酷狗音乐/概念版**    | `kugou-music`       | **需在 App 内开启车载歌词模式** |
 | 📻 **酷我音乐**        | `kuwo-music`        | **需在 App 内开启车载歌词模式** |
@@ -47,7 +47,7 @@
 
 1. **下载**：前往 [Releases 页面](https://github.com/proify/LyricProvider/releases) 获取最新的 APK
    安装包。
-2. **激活**：安装后进入 **LSPosed 管理器**，勾选启用 **LyricProvider**。
+2. **激活**：安装后进入 **LSPosed 管理器**，勾选启用 **对应提供者**。
 3. **配置作用域**：在 LSPosed 中勾选你需要获取歌词的音乐 App（如 Apple Music、网易云等）。
 4. **生效**：强行停止并重新打开对应的音乐 App 即可体验。
 
@@ -57,9 +57,7 @@
 
 我们非常欢迎社区提交 Pull Request 来适配更多音乐 App。
 
-* **技术文档**
-  ：请阅读 [Provider 协议开发说明](https://github.com/proify/lyricon/blob/master/lyric/bridge/provider/README.md)
-* **参考实现**：本项目中的 `apple-music` 模块是极佳的入门示例。
+请阅读 [开发文档](https://github.com/proify/lyricon/blob/master/lyric/bridge/provider/README.md)
 
 ---
 
