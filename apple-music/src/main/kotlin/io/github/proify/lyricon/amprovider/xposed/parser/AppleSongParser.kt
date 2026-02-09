@@ -6,7 +6,7 @@
 
 package io.github.proify.lyricon.amprovider.xposed.parser
 
-import io.github.proify.lyricon.amprovider.xposed.AppleMediaMetadata
+import io.github.proify.lyricon.amprovider.xposed.MediaMetadataCache
 import io.github.proify.lyricon.amprovider.xposed.model.AppleSong
 import io.github.proify.lyricon.amprovider.xposed.parser.LyricsSectionParser.mergeLyrics
 
@@ -36,7 +36,7 @@ object AppleSongParser {
         // translationLanguages = StringVectorParser.parserStringVectorNative(get(o, "getTranslationLanguages"))
 
         adamId?.let {
-            AppleMediaMetadata.getMetadataById(it)
+            MediaMetadataCache.getMetadataById(it)
                 ?.let { metadata ->
                     name = metadata.title
                     artist = metadata.artist

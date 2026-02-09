@@ -12,8 +12,8 @@ import kotlinx.serialization.Serializable
 import java.lang.reflect.Method
 
 object MediaMetadataCache {
-    private val metadataCache = object : LinkedHashMap<String, Metadata>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Metadata>?): Boolean =
+    private val metadataCache = object : LinkedHashMap<Long, Metadata>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Metadata>?): Boolean =
             size > 50
     }
 
@@ -56,26 +56,25 @@ object MediaMetadataCache {
         val artistsName = getArtistsNameMethod.invokeSafe(bizMusicMeta) as? String
         val duration = getDurationMethod.invokeSafe(bizMusicMeta) as? Long ?: 0L
 
-        val strId = id.toString()
         val newMetadata = Metadata(
-            id = strId,
+            id = id,
             title = musicName,
             artist = artistsName,
             duration = duration
         )
 
         synchronized(metadataCache) {
-            metadataCache[strId] = newMetadata
+            metadataCache[id] = newMetadata
         }
         return newMetadata
     }
 
-    fun getMetadataById(mediaId: String): Metadata? =
+    fun getMetadataById(mediaId: Long): Metadata? =
         synchronized(metadataCache) { metadataCache[mediaId] }
 
     @Serializable
     data class Metadata(
-        val id: String,
+        val id: Long,
         val title: String?,
         val artist: String?,
         val duration: Long

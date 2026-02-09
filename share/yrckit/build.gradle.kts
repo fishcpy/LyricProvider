@@ -19,7 +19,13 @@ kotlin {
     }
 }
 dependencies {
+    implementation(project(":share:extensions-kt"))
+    implementation(project(":share:lrckit"))
+
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.lyricon.lyric.model)
+
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.brotli)
     testImplementation(kotlin("test"))
 }

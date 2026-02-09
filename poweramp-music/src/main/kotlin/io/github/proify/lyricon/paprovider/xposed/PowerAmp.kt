@@ -121,7 +121,7 @@ object PowerAmp : YukiBaseHooker(), DownloadCallback {
 
     // --- 播放状态与进度同步 ---
 
-    /**
+    /*
      * Hook MediaSession 以获取实时播放状态。
      */
     private fun hookMediaSession() {
@@ -284,7 +284,7 @@ object PowerAmp : YukiBaseHooker(), DownloadCallback {
         val separatorIndex = input.indexOf('/')
         if (separatorIndex == -1) return null
 
-        val volumeId = input.substring(0, separatorIndex)
+        val volumeId = input.take(separatorIndex)
         val relativePath = input.substring(separatorIndex + 1)
 
         return if (volumeId.isNotEmpty()) "$volumeId:$relativePath" else null

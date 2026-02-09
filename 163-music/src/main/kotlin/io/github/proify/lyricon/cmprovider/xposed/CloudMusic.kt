@@ -7,20 +7,24 @@ package io.github.proify.lyricon.cmprovider.xposed
 
 import android.app.Application
 import android.media.session.PlaybackState
+import android.os.SystemClock
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.core.YukiMemberHookCreator
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
+import io.github.proify.extensions.json
 import io.github.proify.lyricon.cmprovider.xposed.Constants.ICON
 import io.github.proify.lyricon.cmprovider.xposed.Constants.PROVIDER_PACKAGE_NAME
 import io.github.proify.lyricon.cmprovider.xposed.PreferencesMonitor.PreferenceCallback
-import io.github.proify.lyricon.cmprovider.xposed.parser.ResponseParser
-import io.github.proify.lyricon.cmprovider.xposed.parser.toSong
+import io.github.proify.lyricon.cmprovider.xposed.download.DownloadCallback
+import io.github.proify.lyricon.cmprovider.xposed.download.Downloader
+import io.github.proify.lyricon.cmprovider.xposed.parser.LocalLyricCache
 import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.provider.LyriconFactory
 import io.github.proify.lyricon.provider.LyriconProvider
 import io.github.proify.lyricon.provider.ProviderConstants
 import io.github.proify.lyricon.provider.ProviderLogo
+import io.github.proify.lyricon.yrckit.download.response.LyricResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,9 +32,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.encodeToStream
 import org.luckypray.dexkit.DexKitBridge
 import java.io.File
-import java.lang.reflect.Method
 
 object CloudMusic : YukiBaseHooker() {
     private const val TAG: String = "CloudMusicProvider"
@@ -50,11 +55,11 @@ object CloudMusic : YukiBaseHooker() {
         }
     }
 
-    private class PlayProgressHooker : LyricFileObserver.FileObserverCallback {
+    private class PlayProgressHooker : LyricFileObserver.FileObserverCallback, DownloadCallback {
         private var provider: LyriconProvider? = null
         private var lastSong: Song? = null
         private val hotHooker = HotHooker()
-        private var currentMusicId: String? = null
+        private var currentMusicId: Long? = null
         private var lyricFileObserver: LyricFileObserver? = null
 
         private val coroutineScope by lazy { CoroutineScope(Dispatchers.Default + SupervisorJob()) }
@@ -64,6 +69,8 @@ object CloudMusic : YukiBaseHooker() {
 
         private var dexKitBridge: DexKitBridge? = null
         private var preferencesMonitor: PreferencesMonitor? = null
+
+        private var lastPlaybackState: PlaybackState = PlaybackState.Builder().build()
 
         fun onHook() {
             YLog.debug("Hooking, processName= $processName")
@@ -91,6 +98,32 @@ object CloudMusic : YukiBaseHooker() {
                         after {
                             val app = args[0] as Application
                             rehook(app.classLoader)
+                        }
+                    }
+                }
+
+            hookMediaSession()
+        }
+
+        private fun hookMediaSession() {
+            "android.media.session.MediaSession".toClass()
+                .resolve()
+                .apply {
+                    firstMethod {
+                        name = "setPlaybackState"
+                        parameters(PlaybackState::class.java)
+                    }.hook {
+                        after {
+                            val state = args[0] as? PlaybackState ?: return@after
+                            lastPlaybackState = state
+
+                            when (state.state) {
+                                PlaybackState.STATE_PLAYING -> startSyncAction()
+                                PlaybackState.STATE_PAUSED,
+                                PlaybackState.STATE_STOPPED -> stopSyncAction()
+
+                                else -> Unit
+                            }
                         }
                     }
                 }
@@ -126,16 +159,50 @@ object CloudMusic : YukiBaseHooker() {
             YLog.info(tag = TAG, msg = "Provider registered")
         }
 
+        override fun onDownloadFinished(id: Long, response: LyricResponse) {
+            YLog.debug(tag = TAG, msg = "Download finished: $id")
+            writeToLocalLyricCache(id, response)
+        }
+
+        @OptIn(ExperimentalSerializationApi::class)
+        private fun writeToLocalLyricCache(id: Long, response: LyricResponse) {
+            val context = appContext ?: return
+
+            val outputFile = File(Constants.getDownloadLyricDirectory(context), id.toString())
+            val cache = LocalLyricCache(
+                musicId = id,
+                lrc = response.lrc?.lyric,
+                lrcTranslateLyric = response.tlyric?.lyric,
+                yrc = response.yrc?.lyric,
+                yrcTranslateLyric = response.ytlrc?.lyric,
+                pureMusic = response.pureMusic,
+            )
+
+            outputFile.outputStream().use { outputStream ->
+                json.encodeToStream(cache, outputStream)
+            }
+
+            loadLyricFile("network", outputFile)
+        }
+
+        override fun onDownloadFailed(id: Long, e: Exception) {
+            YLog.error(tag = TAG, msg = "Download failed: $id, e=$e")
+        }
+
         /**
-         * 文件变更回调
+         * 监听文件回调
          */
         override fun onFileChanged(event: Int, file: File) {
-            val currentId = currentMusicId ?: return
-            YLog.debug(tag = TAG, msg = "File changed: $file")
-            if (file.name != currentId) return
+            loadLyricFile("localCache", file)
+        }
 
+        fun loadLyricFile(source: String, file: File) {
+            val currentId = currentMusicId ?: return
+            if (file.name != currentId.toString()) return
+
+            YLog.debug(tag = TAG, msg = "Load lyric file: $source, file=$file")
             val metadata = MediaMetadataCache.getMetadataById(currentId) ?: return
-            performSyncLoad(metadata)
+            performSyncLoad(metadata, file)
         }
 
         /**
@@ -145,35 +212,39 @@ object CloudMusic : YukiBaseHooker() {
             val newId = metadata.id
             if (currentMusicId == newId) return
             currentMusicId = newId
-            performSyncLoad(metadata)
+
+            val cacheFile = lyricFileObserver?.getFile(newId)
+            if (cacheFile != null && cacheFile.exists()) {
+                loadLyricFile("localCache", cacheFile)
+            } else {
+                Downloader.download(newId, this)
+            }
         }
 
         /**
          * 核心同步加载逻辑
          */
-        private fun performSyncLoad(metadata: MediaMetadataCache.Metadata) {
+        private fun performSyncLoad(metadata: MediaMetadataCache.Metadata, rawFile: File?) {
             val id = metadata.id
 
             var targetSong = Song(
-                id = id,
+                id = id.toString(),
                 name = metadata.title,
                 artist = metadata.artist,
                 duration = metadata.duration
             )
 
-            // 尝试读取歌词文件并解析
-            val rawFile = lyricFileObserver?.getFile(id)
-            if (rawFile != null && rawFile.exists()) {
+            if (rawFile?.exists() == true) {
                 try {
                     val jsonString = rawFile.readText()
-                    val response = ResponseParser.parse(jsonString)
+                    val response = json.decodeFromString<LocalLyricCache>(jsonString)
                     val parsedSong = response.toSong()
 
                     if (!parsedSong.lyrics.isNullOrEmpty() && !response.pureMusic) {
                         targetSong = parsedSong
                     }
                 } catch (e: Exception) {
-                    YLog.debug("Sync parse failed for $id: ${e.message}")
+                    YLog.error("Sync parse failed for $id: ${e.message}", e = e)
                 }
             }
 
@@ -213,8 +284,8 @@ object CloudMusic : YukiBaseHooker() {
             if (progressJob?.isActive == true) return
             progressJob = coroutineScope.launch {
                 while (isActive && isPlaying) {
-                    val pos = readPosition()
-                    provider?.player?.setPosition(pos.toLong())
+                    val pos = calculateCurrentPosition()
+                    provider?.player?.setPosition(pos)
                     delay(ProviderConstants.DEFAULT_POSITION_UPDATE_INTERVAL)
                 }
             }
@@ -225,17 +296,16 @@ object CloudMusic : YukiBaseHooker() {
             progressJob = null
         }
 
-        private fun readPosition(): Int {
-            return try {
-                hotHooker.getCurrentTimeMethod?.invoke(null) as? Int ?: 0
-            } catch (_: Exception) {
-                0
-            }
+        private fun calculateCurrentPosition(): Long {
+            val state = lastPlaybackState
+            if (state.state != PlaybackState.STATE_PLAYING) return state.position
+
+            val elapsedSinceUpdate = SystemClock.elapsedRealtime() - state.lastPositionUpdateTime
+            return state.position + (elapsedSinceUpdate * state.playbackSpeed).toLong()
         }
 
         inner class HotHooker {
             private val unhooks = mutableListOf<YukiMemberHookCreator.MemberHookCreator.Result>()
-            var getCurrentTimeMethod: Method? = null
 
             fun rehook(classLoader: ClassLoader) {
                 unhooks.forEach { it.remove() }
@@ -243,7 +313,6 @@ object CloudMusic : YukiBaseHooker() {
 
                 val playServiceClass =
                     "com.netease.cloudmusic.service.PlayService".toClass(classLoader)
-                getCurrentTimeMethod = playServiceClass.getDeclaredMethod("getCurrentTime")
 
                 val playServiceClassResolve = playServiceClass.resolve()
 
@@ -258,23 +327,6 @@ object CloudMusic : YukiBaseHooker() {
                             YLog.debug(tag = TAG, msg = "Metadata changed: $bizMusicMeta")
                             val metadata = MediaMetadataCache.put(bizMusicMeta) ?: return@after
                             onSongChanged(metadata)
-                        }
-                    }
-
-                unhooks += playServiceClassResolve
-                    .firstMethod {
-                        name = "onPlaybackStatusChanged"
-                        parameters(Int::class)
-                    }
-                    .hook {
-                        after {
-                            val status = args[0] as? Int ?: return@after
-                            YLog.debug(tag = TAG, msg = "Playback status changed: $status")
-                            when (status) {
-                                PlaybackState.STATE_PLAYING -> startSyncAction()
-                                PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED -> stopSyncAction()
-                                else -> Unit
-                            }
                         }
                     }
             }

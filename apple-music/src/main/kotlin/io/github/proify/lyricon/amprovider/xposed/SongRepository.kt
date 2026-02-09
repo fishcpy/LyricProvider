@@ -24,7 +24,7 @@ object SongRepository {
         }
 
         // 2. 缓存未命中，从 Metadata 生成占位符（只有标题/歌手，无歌词）
-        val metadata = AppleMediaMetadata.getMetadataById(id)
+        val metadata = MediaMetadataCache.getMetadataById(id)
         return Song(id, metadata?.title, metadata?.artist)
     }
 

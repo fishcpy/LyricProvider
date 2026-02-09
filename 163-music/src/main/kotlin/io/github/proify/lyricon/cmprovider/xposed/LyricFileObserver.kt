@@ -12,6 +12,8 @@ import java.io.File
 
 class LyricFileObserver(context: Context, callback: FileObserverCallback) {
 
+    val downloadLyricDirectory = Constants.getDownloadLyricDirectory(context)
+
     /**
      * 一些版本的歌词路径
      */
@@ -21,12 +23,13 @@ class LyricFileObserver(context: Context, callback: FileObserverCallback) {
             //9.4.65
             context.getExternalFilesDir("LrcCache"),
 
+            context.getExternalFilesDir("LrcCache"),
             context.getExternalFilesDir("Cache/Lyric"),
             context.externalCacheDir?.let { File(it, "Cache/Lyric") },
 
             //离线音乐歌词
             context.getExternalFilesDir("LrcDownload"),
-            context.getExternalFilesDir("Download/Lyric")
+            context.getExternalFilesDir("Download/Lyric"),
         )
     }
 
@@ -35,7 +38,7 @@ class LyricFileObserver(context: Context, callback: FileObserverCallback) {
             if (!dir.exists()) dir.mkdirs()
 
             @Suppress("DEPRECATION")
-            object : FileObserver(dir.absolutePath, CREATE or DELETE or MODIFY) {
+            object : FileObserver(dir.absolutePath, CREATE) {
                 override fun onEvent(event: Int, path: String?) {
                     if (path == null) return
 
@@ -54,9 +57,15 @@ class LyricFileObserver(context: Context, callback: FileObserverCallback) {
         observers.forEach { it.stopWatching() }
     }
 
-    fun getFile(id: String): File? {
-        return watchDirs.map { File(it, id) }
+    fun getFile(id: Long): File? {
+        val fileName = id.toString()
+
+        return watchDirs.asSequence()
+            .map { File(it, fileName) }
             .firstOrNull { it.exists() && it.isFile }
+            ?: File(downloadLyricDirectory, fileName).let {
+                if (it.exists()) return it else null
+            }
     }
 
     interface FileObserverCallback {

@@ -7,10 +7,10 @@
 package io.github.proify.lyricon.amprovider.xposed
 
 import android.content.Context
+import io.github.proify.extensions.deflate
+import io.github.proify.extensions.inflate
+import io.github.proify.extensions.json
 import io.github.proify.lyricon.amprovider.xposed.model.AppleSong
-import io.github.proify.lyricon.common.extensions.deflate
-import io.github.proify.lyricon.common.extensions.inflate
-import io.github.proify.lyricon.common.extensions.json
 import kotlinx.serialization.ExperimentalSerializationApi
 import java.io.File
 import java.util.Locale

@@ -8,12 +8,12 @@ package io.github.proify.lyricon.amprovider.xposed
 
 import android.app.Application
 import android.media.MediaMetadata
+import android.media.session.PlaybackState
+import android.os.SystemClock
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.kavaref.condition.type.VagueType
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
 import de.robv.android.xposed.XposedHelpers
-import io.github.proify.lyricon.common.util.ScreenStateMonitor
+import io.github.proify.extensions.android.ScreenStateMonitor
 import io.github.proify.lyricon.provider.LyriconFactory
 import io.github.proify.lyricon.provider.LyriconProvider
 import io.github.proify.lyricon.provider.ProviderConstants
@@ -25,222 +25,179 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.lang.reflect.Method
-import java.lang.reflect.Modifier
 
 object Apple : YukiBaseHooker() {
+
+    // --- 核心组件 ---
     private lateinit var application: Application
     private lateinit var classLoader: ClassLoader
-
-    // 播放器状态
-    private var isPlaying = false
-
-    // 反射缓存
-    private var exoMediaPlayerInstance: Any? = null
-    private var getPositionMethod: Method? = null
-
-    // 协程作用域
-    private val coroutineScope by lazy { CoroutineScope(Dispatchers.Default + SupervisorJob()) }
-    private var progressJob: Job? = null
-
     private var provider: LyriconProvider? = null
+
+    // --- 状态追踪 ---
+    private var isMusicPlaying = false
+    private var lastPlaybackState: PlaybackState? = null
+
+    // --- 协程调度 ---
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private var progressSyncJob: Job? = null
+
+    // --- 生命周期 ---
 
     override fun onHook() {
         onAppLifecycle {
-            onCreate { onAppCreate() }
+            onCreate { setupModule() }
         }
     }
 
-    private fun onAppCreate() {
+    private fun setupModule() {
         application = appContext ?: return
         classLoader = appClassLoader ?: return
-        PreferencesMonitor.initialize(application)
-        PreferencesMonitor.listener = object : PreferencesMonitor.Listener {
-            override fun onTranslationSelectedChanged(selected: Boolean) {
-                provider?.player?.setDisplayTranslation(selected)
-            }
-        }
 
+        // 1. 初始化外部组件
         DiskSongManager.initialize(application)
-        initScreenStateMonitor()
-        initProvider()
+        initPreferences()
+        initScreenMonitor()
 
-        startHooks()
+        // 2. 初始化核心 Provider
+        setupLyriconProvider()
+
+        // 3. 执行 Hook
+        registerMediaHooks()
+        registerLyricHooks()
     }
 
-    private fun initProvider() {
-        val helper =
-            LyriconFactory.createProvider(
-                context = application,
-                providerPackageName = Constants.PROVIDER_PACKAGE_NAME,
-                playerPackageName = application.packageName,
-                logo = ProviderLogo.fromBase64(Constants.ICON)
-            )
+    // --- 初始化逻辑 ---
+
+    private fun initPreferences() {
+        PreferencesMonitor.apply {
+            initialize(application)
+            listener = object : PreferencesMonitor.Listener {
+                override fun onTranslationSelectedChanged(selected: Boolean) {
+                    provider?.player?.setDisplayTranslation(selected)
+                }
+            }
+        }
+    }
+
+    private fun setupLyriconProvider() {
+        provider = LyriconFactory.createProvider(
+            context = application,
+            providerPackageName = Constants.PROVIDER_PACKAGE_NAME,
+            playerPackageName = application.packageName,
+            logo = ProviderLogo.fromBase64(Constants.ICON)
+        ).apply {
+            player.setDisplayTranslation(PreferencesMonitor.isTranslationSelected())
+            register()
+        }
 
         PlaybackManager.init(
-            remotePlayer = helper.player,
+            remotePlayer = provider!!.player,
             requester = LyricRequester(classLoader, application)
         )
-
-        helper.player.setDisplayTranslation(PreferencesMonitor.isTranslationSelected())
-        helper.register()
-        this.provider = helper
     }
 
-    private fun startHooks() {
-        hookExoMediaPlayer()
-        hookMediaMetadataChange()
-        hookLyricBuildMethod()
-
-//        XposedHelpers.findAndHookMethod(
-//            "com.apple.android.music.player.viewmodel.PlayerLyricsViewModel",
-//            classLoader,
-//            "loadLyrics",
-//            classLoader.loadClass("com.apple.android.music.model.PlaybackItem"),
-//            object : XC_MethodHook() {
-//                @Throws(Throwable::class)
-//                override fun afterHookedMethod(param: MethodHookParam?) {
-//                    val arg = param?.args?.get(0) ?: return
-//                    ObjectUtils.print(arg)
-//                }
-//            })
-    }
-
-    // --- Hook 1: 歌曲切换监听 ---
-    private fun hookMediaMetadataChange() {
-        val method = findMediaMetadataChangeMethod() ?: return
-
-        method.hook {
-            after {
-                val mediaMetadata = args[0] as? MediaMetadata ?: return@after
-                val metadata = AppleMediaMetadata.putAndGet(mediaMetadata) ?: return@after
-
-                // 委托给 Manager 处理
-                PlaybackManager.onSongChanged(metadata.id)
+    private fun initScreenMonitor() {
+        ScreenStateMonitor.initialize(application)
+        ScreenStateMonitor.addListener(object : ScreenStateMonitor.ScreenStateListener {
+            override fun onScreenOn() {
+                if (isMusicPlaying) startProgressSync()
             }
-        }
+
+            override fun onScreenOff() {
+                stopProgressSync()
+            }
+
+            override fun onScreenUnlocked() {
+                if (isMusicPlaying && progressSyncJob == null) startProgressSync()
+            }
+        })
     }
 
-    // --- Hook 2: 歌词构建监听 ---
-    private fun hookLyricBuildMethod() {
-        val m =
-            classLoader.loadClass("com.apple.android.music.player.viewmodel.PlayerLyricsViewModel")
-                .resolve()
-                .firstMethod { name = "buildTimeRangeToLyricsMap" }
-                .hook {
-                    after {
-                        YLog.debug("buildTimeRangeToLyricsMap:$args")
-                        val arg: Any? = args[0]
-                        if (arg == null) {
-                            YLog.debug("args0 null")
-                            return@after
-                        }
-                        val songNative = XposedHelpers.callMethod(arg, "get")
-                        YLog.debug("songNative: $songNative")
+    // --- Hook 注册 ---
 
-                        // 委托给 Manager 处理
-                        PlaybackManager.onLyricsBuilt(songNative)
+    private fun registerMediaHooks() {
+        "android.media.session.MediaSession".toClass().resolve().apply {
+            // 监听播放状态
+            firstMethod {
+                name = "setPlaybackState"
+                parameters(PlaybackState::class.java)
+            }.hook {
+                after {
+                    val state = args[0] as? PlaybackState ?: return@after
+                    lastPlaybackState = state
+
+                    when (state.state) {
+                        PlaybackState.STATE_PLAYING -> handlePlaybackStart()
+                        PlaybackState.STATE_PAUSED,
+                        PlaybackState.STATE_STOPPED -> handlePlaybackStop()
+
+                        else -> Unit
                     }
                 }
-        YLog.debug("hookLyricBuildMethod Hooked: $m")
-    }
+            }
 
-    // --- Hook 3: 播放器控制  ---
-    private fun hookExoMediaPlayer() {
-        val exoPlayerClass =
-            classLoader.loadClass("com.apple.android.music.playback.player.ExoMediaPlayer")
-
-        exoPlayerClass.declaredConstructors.forEach { constructor ->
-            constructor.hook {
+            // 监听切歌元数据
+            firstMethod {
+                name = "setMetadata"
+                parameters("android.media.MediaMetadata")
+            }.hook {
                 after {
-                    exoMediaPlayerInstance = instanceOrNull
-                    getPositionMethod = instanceClass?.getDeclaredMethod("getCurrentPosition")
+                    val metadata = args[0] as? MediaMetadata ?: return@after
+                    val cached = MediaMetadataCache.putAndGet(metadata) ?: return@after
+                    PlaybackManager.onSongChanged(cached.id)
                 }
             }
         }
+    }
 
-        exoPlayerClass.resolve().firstMethod {
-            name = "seekToPosition"
-            parameters(Long::class)
-        }.hook {
-            after {
-                val position = args(0).cast<Long>() ?: 0L
-                if (isPlaying) provider?.player?.seekTo(position)
-            }
-        }
-
-        classLoader.loadClass("com.apple.android.music.playback.controller.LocalMediaPlayerController")
+    private fun registerLyricHooks() {
+        classLoader.loadClass("com.apple.android.music.player.viewmodel.PlayerLyricsViewModel")
             .resolve()
-            .method {
-                name = "onPlaybackStateChanged"
-                parameters(VagueType, Int::class, Int::class)
-            }.first().hook {
+            .firstMethod { name = "buildTimeRangeToLyricsMap" }
+            .hook {
                 after {
-                    when (PlaybackState.of(args[2] as Int)) {
-                        PlaybackState.PLAYING -> startSyncAction()
-                        else -> stopSyncAction()
-                    }
+                    val songNative = XposedHelpers.callMethod(args[0] ?: return@after, "get")
+                    PlaybackManager.onLyricsBuilt(songNative)
                 }
             }
     }
 
-    // --- 进度同步逻辑 ---
+    // --- 进度同步控制 ---
 
-    private fun startSyncAction() {
-        if (isPlaying) return
-        isPlaying = true
+    private fun handlePlaybackStart() {
+        if (isMusicPlaying) return
+        isMusicPlaying = true
         provider?.player?.setPlaybackState(true)
-        resumeCoroutineTask()
+        startProgressSync()
     }
 
-    private fun stopSyncAction() {
-        isPlaying = false
+    private fun handlePlaybackStop() {
+        isMusicPlaying = false
         provider?.player?.setPlaybackState(false)
-        pauseCoroutineTask()
+        stopProgressSync()
     }
 
-    private fun resumeCoroutineTask() {
-        if (progressJob?.isActive == true) return
-        progressJob = coroutineScope.launch {
-            while (isActive && isPlaying) {
-                try {
-                    val pos = getPositionMethod?.invoke(exoMediaPlayerInstance) as? Long ?: 0L
-                    provider?.player?.setPosition(pos)
-                } catch (_: Exception) {
-                }
+    private fun startProgressSync() {
+        if (progressSyncJob?.isActive == true) return
+        progressSyncJob = scope.launch {
+            while (isActive && isMusicPlaying) {
+                val currentPos = calculateRealtimePosition()
+                provider?.player?.setPosition(currentPos)
                 delay(ProviderConstants.DEFAULT_POSITION_UPDATE_INTERVAL)
             }
         }
     }
 
-    private fun pauseCoroutineTask() {
-        progressJob?.cancel()
-        progressJob = null
+    private fun stopProgressSync() {
+        progressSyncJob?.cancel()
+        progressSyncJob = null
     }
 
-    private fun initScreenStateMonitor() {
-        ScreenStateMonitor.initialize(application)
-        ScreenStateMonitor.addListener(object : ScreenStateMonitor.ScreenStateListener {
-            override fun onScreenOn() {
-                if (isPlaying) resumeCoroutineTask()
-            }
+    private fun calculateRealtimePosition(): Long {
+        val state = lastPlaybackState ?: return 0L
+        if (state.state != PlaybackState.STATE_PLAYING) return state.position
 
-            override fun onScreenOff() {
-                pauseCoroutineTask()
-            }
-
-            override fun onScreenUnlocked() {
-                if (isPlaying && progressJob == null) resumeCoroutineTask()
-            }
-        })
+        val timeDiff = SystemClock.elapsedRealtime() - state.lastPositionUpdateTime
+        return state.position + (timeDiff * state.playbackSpeed).toLong()
     }
-
-    private fun findMediaMetadataChangeMethod() =
-        "android.support.v4.media.MediaMetadataCompat".toClass()
-            .declaredMethods.firstOrNull {
-                Modifier.isPublic(it.modifiers)
-                        && Modifier.isStatic(it.modifiers)
-                        && it.parameterCount == 1
-                        && it.returnType.simpleName.contains("MediaMetadata")
-            }
 }

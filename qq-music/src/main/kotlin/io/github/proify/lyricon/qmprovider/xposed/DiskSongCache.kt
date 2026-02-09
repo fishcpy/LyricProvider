@@ -8,9 +8,9 @@ package io.github.proify.lyricon.qmprovider.xposed
 
 import android.content.Context
 import com.highcapable.yukihookapi.hook.log.YLog
-import io.github.proify.lyricon.common.extensions.deflate
-import io.github.proify.lyricon.common.extensions.inflate
-import io.github.proify.lyricon.common.extensions.json
+import io.github.proify.extensions.deflate
+import io.github.proify.extensions.inflate
+import io.github.proify.extensions.json
 import io.github.proify.lyricon.lyric.model.Song
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.decodeFromStream

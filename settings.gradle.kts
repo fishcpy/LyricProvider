@@ -32,7 +32,9 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "LyricProvider"
-include(":share:common")
+include(":share:extensions-kt")
+include(":share:extensions-android")
+
 include(":share:qrckit")
 include(":share:lrckit")
 include(":share:yrckit")

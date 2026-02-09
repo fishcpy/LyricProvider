@@ -8,11 +8,11 @@ package io.github.proify.lyricon.spotifyprovider.xposed
 
 import android.media.MediaMetadata
 import android.media.session.PlaybackState
+import android.os.SystemClock
 import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.core.YukiMemberHookCreator
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
-import io.github.proify.lyricon.common.extensions.toPairMap
+import io.github.proify.extensions.toPairMap
 import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.provider.LyriconFactory
 import io.github.proify.lyricon.provider.LyriconProvider
@@ -29,7 +29,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.lang.reflect.Method
 import java.util.Locale
 
 object Spotify : YukiBaseHooker(), DownloadCallback {
@@ -40,11 +39,9 @@ object Spotify : YukiBaseHooker(), DownloadCallback {
     private var trackId: String? = null
     private var lastSong: Song? = null
 
-    private var playerState: Any? = null
-    private var positionMethod: Method? = null
-    private var positionResult: YukiMemberHookCreator.MemberHookCreator.Result? = null
     private var positionJob: Job? = null
     private val coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private var lastPlaybackState: PlaybackState? = null
 
     override fun onHook() {
         YLog.debug(tag = TAG, msg = "正在注入进程: $processName")
@@ -54,14 +51,13 @@ object Spotify : YukiBaseHooker(), DownloadCallback {
         }
         hookMediaSession()
         hookOkHttp()
-        hookPlayerState()
     }
 
     private fun startPositionSync() {
         if (positionJob != null) return
         positionJob = coroutineScope.launch {
             while (isActive && isPlaying) {
-                val position = readPosition()
+                val position = calculateCurrentPosition()
                 lyriconProvider?.player?.setPosition(position)
                 delay(ProviderConstants.DEFAULT_POSITION_UPDATE_INTERVAL)
             }
@@ -73,37 +69,12 @@ object Spotify : YukiBaseHooker(), DownloadCallback {
         positionJob = null
     }
 
-    //待优化，但目前不想写代码
-    private fun readPosition(): Long {
-        return try {
-            val any = positionMethod?.invoke(playerState, System.currentTimeMillis())
-            val str = any.toString()
-            val start = str.indexOf('(')
-            val end = str.indexOf(')')
-            if (start != -1 && end != -1) {
-                val value = str.substring(start + 1, end)
-                return if (value.isNotBlank()) value.toLong() else 0
-            } else {
-                0
-            }
-        } catch (e: Exception) {
-            YLog.error(tag = TAG, msg = "Failed to read position", e = e)
-            0
-        }
-    }
+    private fun calculateCurrentPosition(): Long {
+        val state = lastPlaybackState ?: return 0L
+        if (state.state != PlaybackState.STATE_PLAYING) return state.position
 
-    private fun hookPlayerState() {
-        positionResult = "com.spotify.player.model.PlayerState".toClass()
-            .resolve()
-            .firstMethod {
-                name = "position"
-                parameters(Long::class)
-            }.hook {
-                after {
-                    if (playerState != instance) playerState = instance
-                    if (positionMethod == null) positionMethod = method
-                }
-            }
+        val elapsedSinceUpdate = SystemClock.elapsedRealtime() - state.lastPositionUpdateTime
+        return state.position + (elapsedSinceUpdate * state.playbackSpeed).toLong()
     }
 
     private fun hookOkHttp() {
@@ -140,8 +111,16 @@ object Spotify : YukiBaseHooker(), DownloadCallback {
                 parameters(PlaybackState::class.java)
             }.hook {
                 after {
-                    val state = (args[0] as? PlaybackState)?.state ?: return@after
-                    dispatchPlaybackState(state)
+                    val state = (args[0] as? PlaybackState) ?: return@after
+                    lastPlaybackState = state
+
+                    when (state.state) {
+                        PlaybackState.STATE_PLAYING -> applyPlaybackUpdate(true)
+                        PlaybackState.STATE_PAUSED,
+                        PlaybackState.STATE_STOPPED -> applyPlaybackUpdate(false)
+
+                        else -> Unit
+                    }
                 }
             }
 
@@ -191,13 +170,6 @@ object Spotify : YukiBaseHooker(), DownloadCallback {
 
         setPlaceholder(title, artist)
         Downloader.download(id, this)
-    }
-
-    private fun dispatchPlaybackState(state: Int) {
-        when (state) {
-            PlaybackState.STATE_PLAYING -> applyPlaybackUpdate(true)
-            PlaybackState.STATE_PAUSED, PlaybackState.STATE_STOPPED -> applyPlaybackUpdate(false)
-        }
     }
 
     private fun applyPlaybackUpdate(playing: Boolean) {

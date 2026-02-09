@@ -62,7 +62,7 @@ configure<ApplicationExtension> {
 }
 
 dependencies {
-    implementation(project(":share:common"))
+    implementation(project(":share:extensions-android"))
     implementation(project(":share:cloudlyric"))
 
     implementation(libs.lyricon.provider)

@@ -13,7 +13,7 @@ import android.os.Looper
 import com.highcapable.kavaref.KavaRef.Companion.resolve
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
-import io.github.proify.lyricon.common.util.Utils
+import io.github.proify.extensions.android.AndroidUtils
 import io.github.proify.lyricon.kgprovider.xposed.Constants
 import io.github.proify.lyricon.provider.LyriconFactory
 import io.github.proify.lyricon.provider.LyriconProvider
@@ -29,7 +29,7 @@ open class KuGou(val tag: String = "KuGouProvider") : YukiBaseHooker() {
     private val pauseRunnable = Runnable { applyPlaybackUpdate(false) }
 
     override fun onHook() {
-        Utils.openBluetoothA2dpOn(appClassLoader)
+        AndroidUtils.openBluetoothA2dpOn(appClassLoader)
         YLog.debug(tag = tag, msg = "进程: $processName")
 
         onAppLifecycle {
