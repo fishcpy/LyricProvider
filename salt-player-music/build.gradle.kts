@@ -22,8 +22,8 @@ configure<ApplicationExtension> {
         applicationId = "io.github.proify.lyricon.saltprovider"
         minSdk = 27
         targetSdk = rootProject.extra.get("targetSdkVersion") as Int
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -64,16 +64,17 @@ configure<ApplicationExtension> {
 
 dependencies {
     implementation(project(":share:extensions-android"))
-    implementation(project(":share:meizu-provider"))
+    implementation(project(":share:lrckit"))
 
     implementation(libs.lyricon.provider)
+    implementation(libs.lyricon.lyric.model)
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.yukihookapi.api)
-    implementation(libs.kavaref.core)
-    implementation(libs.kavaref.extension)
     compileOnly(libs.xposed.api)
     ksp(libs.yukihookapi.ksp.xposed)
+
+    implementation(libs.dexkit)
 
     implementation(libs.androidx.core.ktx)
     testImplementation(libs.junit)
