@@ -30,19 +30,26 @@ configure<ApplicationExtension> {
 
     signingConfigs {
         create("release") {
-            storeFile = file(System.getenv("RELEASE_STORE_FILE") ?: "release.jks")
-            storePassword = System.getenv("RELEASE_STORE_PASSWORD")
-            keyAlias = System.getenv("RELEASE_KEY_ALIAS")
-            keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            val storeFilePath = System.getenv("RELEASE_STORE_FILE") ?: "release.jks"
+            if (file(storeFilePath).exists()) {
+                storeFile = file(storeFilePath)
+                storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("release")
+            if (signingConfigs.getByName("release").storeFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            if (signingConfigs.getByName("release").storeFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

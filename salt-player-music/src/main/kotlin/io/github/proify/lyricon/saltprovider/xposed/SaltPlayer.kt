@@ -8,6 +8,7 @@ package io.github.proify.lyricon.saltprovider.xposed
 
 import android.media.MediaMetadata
 import android.media.session.PlaybackState
+import android.os.Bundle
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
 import io.github.proify.lrckit.EnhanceLrcParser
@@ -28,20 +29,65 @@ object SaltPlayer : YukiBaseHooker() {
     private var lyriconProvider: LyriconProvider? = null
 
     @Volatile
-    private var currentMetadata: MediaMetadata? = null
-
-    @Volatile
-    private var songSent: Boolean = false
+    private var songGeneration: Int = 0
 
     @Volatile
     private var lastDuration: Long = -1L
 
+    @Volatile
+    private var cachedArtist: String? = null
+
+    @Volatile
+    private var cachedMediaId: String? = null
+
+    @Volatile
+    private var cachedDuration: Long = 0L
+
+    // Pending lyrics waiting for provider/metadata to be ready
+    @Volatile
+    private var pendingLyrics: List<RichLyricLine>? = null
+
+    // Flag: need to clear old lyrics when provider becomes available
+    @Volatile
+    private var needsClear: Boolean = false
+
+    // Flag: DexKit hooks have been set up
+    @Volatile
+    private var dexKitHooksReady: Boolean = false
+
+    // Saved class names for return-method hooks (set in onHook, used in onCreate)
+    @Volatile
+    private var savedDocClassName: String? = null
+
+    @Volatile
+    private var savedPkgClassName: String? = null
+
     override fun onHook() {
         hookMediaSession()
+
+        // Hook Application.onCreate() with BEFORE callback to set up DexKit hooks
+        // BEFORE Salt Player's onCreate() runs (which loads lyrics).
+        // YukiHookAPI's onAppLifecycle { onCreate {} } fires AFTER, missing the constructors.
+        "android.app.Application".toClass()
+            .getDeclaredMethod("onCreate")
+            .hook {
+                before {
+                    if (!dexKitHooksReady) {
+                        val app = this.instance as? android.app.Application ?: return@before
+                        val apkPath = app.applicationInfo?.sourceDir ?: return@before
+                        YLog.debug("$TAG: Before onCreate, got APK path from Application: $apkPath")
+                        hookWithDexKit(apkPath)
+                    }
+                }
+            }
+
         onAppLifecycle {
             onCreate {
                 setupProvider()
-                hookWithDexKit()
+                // Fallback if before-hook didn't work
+                if (!dexKitHooksReady) {
+                    hookWithDexKit()
+                }
             }
         }
     }
@@ -53,14 +99,27 @@ object SaltPlayer : YukiBaseHooker() {
             SALT_PKG,
             ProviderLogo.fromBase64(Constants.ICON)
         ).apply { register() }
+
+        YLog.info("$TAG: Provider registered")
+
+        // If we need to clear old lyrics (setSong(null) was skipped because provider was null)
+        if (needsClear) {
+            lyriconProvider?.player?.setSong(null)
+            needsClear = false
+        }
+
+        // Try to send pending lyrics now that provider is ready
+        flushLyrics()
     }
 
-    private fun hookWithDexKit() {
+    private fun hookWithDexKit(apkPathOverride: String? = null) {
+        if (dexKitHooksReady) return
+
         try {
             System.loadLibrary("dexkit")
         } catch (_: UnsatisfiedLinkError) { }
 
-        val apkPath = appContext?.applicationInfo?.sourceDir ?: run {
+        val apkPath = apkPathOverride ?: appContext?.applicationInfo?.sourceDir ?: run {
             YLog.error("$TAG: Cannot get APK path")
             return
         }
@@ -83,12 +142,22 @@ object SaltPlayer : YukiBaseHooker() {
                 }
             }.firstOrNull()?.name
 
-            if (docClassName != null) hookLyricsDocument(docClassName)
-            if (pkgClassName != null) hookLyricsPackage(pkgClassName)
+            YLog.info("$TAG: DexKit found docClass=$docClassName, pkgClass=$pkgClassName")
+
+            if (docClassName != null) {
+                savedDocClassName = docClassName
+                hookLyricsDocument(docClassName)
+            }
+            if (pkgClassName != null) {
+                savedPkgClassName = pkgClassName
+                hookLyricsPackage(pkgClassName)
+            }
 
             if (docClassName == null && pkgClassName == null) {
                 YLog.error("$TAG: Neither LyricsDocument nor LyricsPackage found!")
             }
+
+            dexKitHooksReady = true
         } finally {
             dexKit.close()
         }
@@ -110,8 +179,6 @@ object SaltPlayer : YukiBaseHooker() {
         }
     }
 
-    private var pendingRawLrc: String? = null
-
     private fun hookLyricsPackage(className: String) {
         val cls = className.toClass()
         val targetCtor = cls.declaredConstructors.firstOrNull { ctor ->
@@ -121,10 +188,6 @@ object SaltPlayer : YukiBaseHooker() {
 
         targetCtor.hook {
             after {
-                val rawText = args.lastOrNull { it is String } as? String
-                if (rawText != null && rawText.lines().size > 3) {
-                    pendingRawLrc = rawText
-                }
                 try {
                     extractFromLyricsPackage(this.instance)
                 } catch (e: Throwable) {
@@ -136,7 +199,7 @@ object SaltPlayer : YukiBaseHooker() {
 
     @Suppress("UNCHECKED_CAST")
     private fun extractFromLyricsDocument(doc: Any) {
-        if (songSent) return
+        val gen = songGeneration
 
         var lyricsLines: List<Any>? = null
         var sourceText: String? = null
@@ -153,17 +216,17 @@ object SaltPlayer : YukiBaseHooker() {
                 try { parseLyricsLine(lineObj) } catch (_: Exception) { null }
             }
             if (richLines.isNotEmpty()) {
-                sendStructuredLyrics(richLines)
+                cacheLyrics(richLines, gen)
                 return
             }
         }
 
-        if (!sourceText.isNullOrBlank()) parseAndSendFromLrc(sourceText!!)
+        if (!sourceText.isNullOrBlank()) parseAndSendFromLrc(sourceText!!, gen)
     }
 
     @Suppress("UNCHECKED_CAST")
     private fun extractFromLyricsPackage(pkg: Any) {
-        if (songSent) return
+        val gen = songGeneration
 
         var document: Any? = null
         var sourceText: String? = null
@@ -178,16 +241,16 @@ object SaltPlayer : YukiBaseHooker() {
         if (document != null) {
             try {
                 extractFromLyricsDocument(document!!)
-                if (songSent) return
+                if (songGeneration == gen) return
             } catch (_: Exception) { }
         }
 
-        if (!sourceText.isNullOrBlank()) parseAndSendFromLrc(sourceText!!)
+        if (!sourceText.isNullOrBlank()) parseAndSendFromLrc(sourceText!!, gen)
     }
 
-    private fun parseAndSendFromLrc(rawLrc: String) {
-        if (songSent) return
-        val duration = currentMetadata?.duration ?: 0L
+    private fun parseAndSendFromLrc(rawLrc: String, gen: Int) {
+        if (songGeneration != gen) return
+        val duration = cachedDuration
         val doc = EnhanceLrcParser.parse(rawLrc, duration)
         if (doc.lines.isEmpty()) return
 
@@ -207,21 +270,39 @@ object SaltPlayer : YukiBaseHooker() {
                 roma = null
             )
         }
-        sendStructuredLyrics(richLines)
+        cacheLyrics(richLines, gen)
     }
 
-    private fun sendStructuredLyrics(richLines: List<RichLyricLine>) {
-        val metadata = currentMetadata
+    /**
+     * Cache lyrics and try to flush them if provider and metadata are ready.
+     */
+    private fun cacheLyrics(richLines: List<RichLyricLine>, gen: Int) {
+        if (songGeneration != gen) return
+        pendingLyrics = richLines
+        YLog.debug("$TAG: Lyrics cached, ${richLines.size} lines, gen=$gen, provider=${lyriconProvider != null}")
+        flushLyrics()
+    }
+
+    /**
+     * Try to send pending lyrics to Lyricon if both provider and metadata are available.
+     * This is the single point of lyrics sending - called whenever state changes.
+     */
+    private fun flushLyrics() {
+        val lyrics = pendingLyrics ?: return
+        val provider = lyriconProvider ?: return
+        if (cachedDuration <= 0) return
+
         val song = Song(
-            id = metadata?.mediaId ?: "",
-            name = metadata?.title,
-            artist = metadata?.artist,
-            duration = metadata?.duration ?: 0L,
-            lyrics = richLines
+            id = cachedMediaId ?: cachedDuration.toString(),
+            name = cachedMediaId ?: "Unknown",
+            artist = cachedArtist,
+            duration = cachedDuration,
+            lyrics = lyrics
         )
-        lyriconProvider?.player?.setSong(song)
-        lyriconProvider?.player?.setDisplayTranslation(true)
-        songSent = true
+        provider.player.setSong(song)
+        provider.player.setDisplayTranslation(true)
+        pendingLyrics = null
+        YLog.debug("$TAG: Lyrics sent, ${lyrics.size} lines")
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -231,7 +312,6 @@ object SaltPlayer : YukiBaseHooker() {
         var mainText: String? = null
         var subText: String? = null
         var cells: List<Any>? = null
-        var wordsData: ArrayList<Any>? = null
 
         for (field in lineObj.javaClass.declaredFields) {
             field.isAccessible = true
@@ -244,7 +324,6 @@ object SaltPlayer : YukiBaseHooker() {
                 value is String && mainText == null -> mainText = value
                 value is String && mainText != null && subText == null -> subText = value
                 value is List<*> && cells == null -> cells = value as List<Any>
-                value is ArrayList<*> && wordsData == null -> wordsData = value as ArrayList<Any>
             }
         }
 
@@ -306,15 +385,24 @@ object SaltPlayer : YukiBaseHooker() {
         )
     }
 
-    private fun parseWordFromPair(pairObj: Any): LyricWord? {
-        for (field in pairObj.javaClass.declaredFields) {
-            field.isAccessible = true
-            val value = field.get(pairObj) ?: continue
-            if (value !is String && value !is Long && value !is Number) {
-                return parseLyricsCell(value)
+    /**
+     * Read string from MediaMetadata, with Bundle reflection fallback.
+     */
+    private fun readMetadataString(metadata: MediaMetadata, key: String): String? {
+        metadata.getString(key)?.let { return it }
+
+        return try {
+            val bundleField = MediaMetadata::class.java.getDeclaredField("mBundle")
+            bundleField.isAccessible = true
+            val bundle = bundleField.get(metadata) as? Bundle
+            when (val value = bundle?.get(key)) {
+                is String -> value
+                is CharSequence -> value.toString()
+                else -> value?.toString()
             }
+        } catch (e: Exception) {
+            null
         }
-        return null
     }
 
     private fun hookMediaSession() {
@@ -332,25 +420,33 @@ object SaltPlayer : YukiBaseHooker() {
             .hook {
                 after {
                     val metadata = args[0] as? MediaMetadata ?: return@after
-                    val duration = metadata.duration
+                    val duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION)
+
                     if (duration != lastDuration && duration > 0) {
                         lastDuration = duration
-                        currentMetadata = metadata
-                        songSent = false
+
+                        cachedArtist = readMetadataString(metadata, MediaMetadata.METADATA_KEY_ARTIST)
+                            ?: readMetadataString(metadata, MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)
+                        cachedMediaId = readMetadataString(metadata, MediaMetadata.METADATA_KEY_MEDIA_ID)
+                        cachedDuration = duration
+
+                        val oldGen = songGeneration
+                        songGeneration++
+
+                        // Clear old lyrics state on song change
+                        if (pendingLyrics != null && oldGen > 0) {
+                            pendingLyrics = null
+                        }
+
+                        YLog.info("$TAG: New song: duration=$duration, gen=$songGeneration")
+
+                        // Clear old lyrics
+                        lyriconProvider?.player?.setSong(null) ?: run { needsClear = true }
+
+                        // Try to send new lyrics if already available
+                        flushLyrics()
                     }
                 }
             }
     }
-
-    private val MediaMetadata.mediaId: String?
-        get() = getString(MediaMetadata.METADATA_KEY_MEDIA_ID)
-
-    private val MediaMetadata.title: String?
-        get() = getString(MediaMetadata.METADATA_KEY_TITLE)
-
-    private val MediaMetadata.artist: String?
-        get() = getString(MediaMetadata.METADATA_KEY_ARTIST)
-
-    private val MediaMetadata.duration: Long
-        get() = getLong(MediaMetadata.METADATA_KEY_DURATION)
 }
